@@ -437,7 +437,7 @@ func (t *commandType) PrintPublicDeclaration(w io.Writer) {
 	}
 
 	t.bindingParamCount = len(funcTrampolineParams)
-	dispatchableParamIndex := firstDispatchableParamIndex(funcTrampolineParams)
+	dispatchableParamIndex := firstResolverInstanceParamIndex(funcTrampolineParams)
 
 	inputSpecString, _ := specStringFromParams(funcInputParams)
 	returnSpecString, hasResult := specStringFromParams(funcReturnParams)
@@ -469,9 +469,9 @@ func (t *commandType) PrintPublicDeclaration(w io.Writer) {
 		t.RegistryName(), t.RegistryName(), t.bindingParamCount, t.resolvedReturnType != nil, dispatchableParamIndex)
 }
 
-func firstDispatchableParamIndex(params []*commandParam) int {
+func firstResolverInstanceParamIndex(params []*commandParam) int {
 	for i, p := range params {
-		if p.isDispatchableHandle() {
+		if p.isResolverInstanceHandle() {
 			return i
 		}
 	}
@@ -535,9 +535,9 @@ type commandParam struct {
 	requiresTranslation                        bool
 }
 
-func (p *commandParam) isDispatchableHandle() bool {
+func (p *commandParam) isResolverInstanceHandle() bool {
 	ht, ok := p.resolvedType.(*handleType)
-	return ok && ht.IsDispatchable()
+	return ok && ht.RegistryName() == "VkInstance"
 }
 
 func (p *commandParam) Resolve(tr TypeRegistry, vr ValueRegistry) *IncludeSet {
