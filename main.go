@@ -310,7 +310,14 @@ func printTypes(w io.Writer, types []def.TypeDefiner, vals map[string]def.ValueR
 func printLooseValues(w io.Writer, valsByTypeName map[string]def.ValueRegistry) {
 	// sort and refactored for cleanup/issue-3
 
-	for k, vr := range valsByTypeName {
+	keys := make([]string, 0, len(valsByTypeName))
+	for k := range valsByTypeName {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		vr := valsByTypeName[k]
 		// Values will be sorted by const name for extension names/spec versions, and by value for typed consts
 		allValues := make([]def.ValueDefiner, 0, len(vr))
 		for _, val := range vr {

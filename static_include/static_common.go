@@ -39,13 +39,16 @@ func (r Result) Error() string {
 }
 
 type vkCommand struct {
-	protoName string
-	argCount  int
-	hasReturn bool
-	fnHandle  unsafe.Pointer
+	protoName         string
+	argCount          int
+	hasReturn         bool
+	dispatchArgIndex  int
+	fnHandle          unsafe.Pointer
 }
 
 var dlHandle unsafe.Pointer
+var procAddressEnabled bool
+var allCommands []*vkCommand
 
 var overrideLibName string
 
@@ -57,8 +60,48 @@ func OverrideDefaultVulkanLibrary(nameOrPath string) {
 	overrideLibName = nameOrPath
 }
 
+func newVkCommand(protoName string, argCount int, hasReturn bool, dispatchArgIndex int) *vkCommand {
+	cmd := &vkCommand{
+		protoName:        protoName,
+		argCount:         argCount,
+		hasReturn:        hasReturn,
+		dispatchArgIndex: dispatchArgIndex,
+	}
+	allCommands = append(allCommands, cmd)
+	return cmd
+}
+
+func resetCommandHandles() {
+	for _, cmd := range allCommands {
+		cmd.fnHandle = nil
+	}
+}
+
+func SetProcAddress(addr unsafe.Pointer) {
+	C.SetProcAddr(addr)
+	procAddressEnabled = addr != nil
+	resetCommandHandles()
+}
+
+func resolveCommandHandle(cmd *vkCommand, args []uintptr) unsafe.Pointer {
+	if !procAddressEnabled {
+		return C.SymbolFromName(dlHandle, unsafe.Pointer(sys_stringToBytePointer(cmd.protoName)))
+	}
+
+	var dispatchable unsafe.Pointer
+	if cmd.dispatchArgIndex >= 0 && cmd.dispatchArgIndex < len(args) && args[cmd.dispatchArgIndex] != 0 {
+		dispatchable = unsafe.Pointer(args[cmd.dispatchArgIndex])
+	}
+
+	return C.GetProcFunc(dispatchable, unsafe.Pointer(sys_stringToBytePointer(cmd.protoName)))
+}
+
 func execTrampoline(cmd *vkCommand, args ...uintptr) uintptr {
-	if dlHandle == nil {
+	if len(args) != cmd.argCount {
+		panic("Wrong number of arguments passed for cmd " + cmd.protoName)
+	}
+
+	if dlHandle == nil && !procAddressEnabled {
 		var libName string
 		switch runtime.GOOS {
 		case "windows":
@@ -84,14 +127,11 @@ func execTrampoline(cmd *vkCommand, args ...uintptr) uintptr {
 		C.free(unsafe.Pointer(cstr))
 	}
 
-	// cmd := lazyCommands[commandKey]
 	if cmd.fnHandle == nil {
-		cmd.fnHandle = C.SymbolFromName(dlHandle, unsafe.Pointer(sys_stringToBytePointer(cmd.protoName)))
-		// lazyCommands[commandKey] = cmd
-	}
-
-	if len(args) != cmd.argCount {
-		panic("Wrong number of arguments passed for cmd " + cmd.protoName)
+		cmd.fnHandle = resolveCommandHandle(cmd, args)
+		if cmd.fnHandle == nil {
+			panic("Unable to resolve command " + cmd.protoName)
+		}
 	}
 
 	var result C.uintptr_t

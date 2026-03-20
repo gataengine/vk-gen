@@ -6,6 +6,18 @@
 #ifndef _WIN32
 #include <dlfcn.h>
 
+static void* (*getInstanceProcAddress)(void*, const char*) = NULL;
+
+void SetProcAddr(void* getProcAddr) {
+	getInstanceProcAddress = getProcAddr;
+}
+
+void* GetProcFunc(void *dispatchable, const void *name) {
+	if (getInstanceProcAddress == NULL) {
+		return NULL;
+	}
+	return (*getInstanceProcAddress)(dispatchable, (const char*) name);
+}
 
 void* OpenLibrary(const char *name) {
 	void* lib_handle = dlopen(name, RTLD_LOCAL|RTLD_LAZY);
@@ -33,6 +45,19 @@ void* SymbolFromName(void *lib_handle, const void *name) {
 #ifdef _WIN32
 
 #include <windows.h>
+
+static void* (*getInstanceProcAddress)(void*, const char*) = NULL;
+
+void SetProcAddr(void* getProcAddr) {
+	getInstanceProcAddress = getProcAddr;
+}
+
+void* GetProcFunc(void *dispatchable, const void *name) {
+	if (getInstanceProcAddress == NULL) {
+		return NULL;
+	}
+	return (*getInstanceProcAddress)(dispatchable, (const char*) name);
+}
 
 void* OpenLibrary(const char *name) {
 	return LoadLibrary(name);

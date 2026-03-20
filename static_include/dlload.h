@@ -5,6 +5,8 @@
 
 void* OpenLibrary(const char *name);
 void CloseLibrary(void *lib_handle);
+void SetProcAddr(void* getProcAddr);
+void* GetProcFunc(void *dispatchable, const void *name);
 
 size_t Trampoline3(void *symbol, uintptr_t p0, uintptr_t p1, uintptr_t p2);
 size_t Trampoline6(void *symbol, uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4, uintptr_t p5);

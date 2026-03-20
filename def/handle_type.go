@@ -16,6 +16,14 @@ type handleType struct {
 
 func (t *handleType) Category() TypeCategory { return CatHandle }
 
+func (t *handleType) IsDispatchable() bool {
+	if t.IsAlias() {
+		ht, ok := t.resolvedAliasType.(*handleType)
+		return ok && ht.IsDispatchable()
+	}
+	return t.underlyingTypeName == "VK_DEFINE_HANDLE"
+}
+
 func (t *handleType) Resolve(tr TypeRegistry, vr ValueRegistry) *IncludeSet {
 	if t.isResolved {
 		return NewIncludeSet()

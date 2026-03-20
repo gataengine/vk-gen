@@ -437,6 +437,7 @@ func (t *commandType) PrintPublicDeclaration(w io.Writer) {
 	}
 
 	t.bindingParamCount = len(funcTrampolineParams)
+	dispatchableParamIndex := firstDispatchableParamIndex(funcTrampolineParams)
 
 	inputSpecString, _ := specStringFromParams(funcInputParams)
 	returnSpecString, hasResult := specStringFromParams(funcReturnParams)
@@ -464,8 +465,17 @@ func (t *commandType) PrintPublicDeclaration(w io.Writer) {
 
 	fmt.Fprintf(w, "}\n\n")
 
-	fmt.Fprintf(w, "var %s = &vkCommand{\"%s\", %d, %v, nil}\n",
-		t.RegistryName(), t.RegistryName(), t.bindingParamCount, t.resolvedReturnType != nil)
+	fmt.Fprintf(w, "var %s = newVkCommand(\"%s\", %d, %v, %d)\n",
+		t.RegistryName(), t.RegistryName(), t.bindingParamCount, t.resolvedReturnType != nil, dispatchableParamIndex)
+}
+
+func firstDispatchableParamIndex(params []*commandParam) int {
+	for i, p := range params {
+		if p.isDispatchableHandle() {
+			return i
+		}
+	}
+	return -1
 }
 
 func trampStringFromParams(sl []*commandParam) string {
@@ -523,6 +533,11 @@ type commandParam struct {
 	isOutputArray                              bool
 	isDoubleCallArray, isDoubleCallArrayLength bool
 	requiresTranslation                        bool
+}
+
+func (p *commandParam) isDispatchableHandle() bool {
+	ht, ok := p.resolvedType.(*handleType)
+	return ok && ht.IsDispatchable()
 }
 
 func (p *commandParam) Resolve(tr TypeRegistry, vr ValueRegistry) *IncludeSet {
