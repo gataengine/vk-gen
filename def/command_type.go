@@ -51,6 +51,11 @@ func (t *commandType) Category() TypeCategory { return CatCommand }
 
 func (t *commandType) IsIdenticalPublicAndInternal() bool { return true }
 
+func (t *commandType) RegisterImports(reg map[string]bool) {
+	reg["runtime"] = true
+	reg["unsafe"] = true
+}
+
 func (t *commandType) Resolve(tr TypeRegistry, vr ValueRegistry) *IncludeSet {
 	if t.isResolved {
 		return NewIncludeSet()
@@ -503,6 +508,13 @@ func (t *commandType) printTrampolineCall(w io.Writer, trampParams []*commandPar
 		}
 	} else {
 		fmt.Fprintf(w, "  execTrampoline(%s%s)\n", t.RegistryName(), trampParamsString)
+	}
+
+	for _, param := range trampParams {
+		fmt.Fprintf(w, "  runtime.KeepAlive(%s)\n", param.internalName)
+		if param.publicName != "" && param.publicName != param.internalName {
+			fmt.Fprintf(w, "  runtime.KeepAlive(%s)\n", param.publicName)
+		}
 	}
 }
 
