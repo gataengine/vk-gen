@@ -89,8 +89,8 @@
       "go:imports": []
     },
     "vi": {
-      "!comment": "Nintendo Vi...not clear if Go can be compiled for Nintendo platforms",
-      "go:build": "!ignore",
+      "!comment": "Nintendo VI surface support for builds tagged with nintendosdk.",
+      "go:build": "nintendosdk",
       "go:imports": []
     },
     "ios": {

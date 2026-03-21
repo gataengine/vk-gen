@@ -39,11 +39,11 @@ func (r Result) Error() string {
 }
 
 type vkCommand struct {
-	protoName         string
-	argCount          int
-	hasReturn         bool
-	dispatchArgIndex  int
-	fnHandle          unsafe.Pointer
+	protoName        string
+	argCount         int
+	hasReturn        bool
+	dispatchArgIndex int
+	fnHandle         unsafe.Pointer
 }
 
 var dlHandle unsafe.Pointer
@@ -84,8 +84,13 @@ func SetProcAddress(addr unsafe.Pointer) {
 }
 
 func resolveCommandHandle(cmd *vkCommand, args []uintptr) unsafe.Pointer {
+	var hint C.uintptr_t
+	if len(args) > 0 {
+		hint = C.uintptr_t(args[0])
+	}
+
 	if !procAddressEnabled {
-		return C.SymbolFromName(dlHandle, unsafe.Pointer(sys_stringToBytePointer(cmd.protoName)))
+		return C.SymbolFromNameWithHint(dlHandle, unsafe.Pointer(sys_stringToBytePointer(cmd.protoName)), hint)
 	}
 
 	var dispatchable unsafe.Pointer
@@ -101,7 +106,7 @@ func execTrampoline(cmd *vkCommand, args ...uintptr) uintptr {
 		panic("Wrong number of arguments passed for cmd " + cmd.protoName)
 	}
 
-	if dlHandle == nil && !procAddressEnabled {
+	if dlHandle == nil && !procAddressEnabled && !disableDefaultVulkanLibraryFallback {
 		var libName string
 		switch runtime.GOOS {
 		case "windows":
