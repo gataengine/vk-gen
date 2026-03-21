@@ -8,6 +8,17 @@ import (
 
 // #include <stdlib.h>
 // #include "dlload.h"
+// #cgo noescape SymbolFromName
+// #cgo nocallback SymbolFromName
+// #cgo nocallback OpenLibrary
+// #cgo noescape Trampoline3
+// #cgo noescape Trampoline6
+// #cgo noescape Trampoline9
+// #cgo noescape Trampoline12
+// #cgo nocallback Trampoline3
+// #cgo nocallback Trampoline6
+// #cgo nocallback Trampoline9
+// #cgo nocallback Trampoline12
 import "C"
 
 // Vulkanizer allows conversion from go-vk style structs to Vulkan-native structs. This
@@ -171,6 +182,9 @@ func execTrampoline(cmd *vkCommand, args ...uintptr) uintptr {
 
 	return uintptr(result)
 }
+
+// If this package grows real Go callback bridges that can be invoked while inside
+// the trampoline helpers, the nocallback directives above must be revisited.
 
 func stringToNullTermBytes(s string) *byte {
 	b := []byte(s)
