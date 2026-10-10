@@ -8,8 +8,8 @@ import (
 
 // #include <stdlib.h>
 // #include "dlload.h"
-// #cgo noescape SymbolFromName
-// #cgo nocallback SymbolFromName
+// #cgo noescape SymbolFromNameWithHint
+// #cgo nocallback SymbolFromNameWithHint
 // #cgo nocallback OpenLibrary
 // #cgo noescape Trampoline3
 // #cgo noescape Trampoline6
