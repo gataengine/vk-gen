@@ -1,6 +1,6 @@
 module github.com/gataengine/vk-gen
 
-go 1.24.0
+go 1.27.1
 
 require (
 	github.com/antchfx/xmlquery v1.3.13
