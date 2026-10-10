@@ -2,7 +2,7 @@ package feat
 
 import (
 	"github.com/antchfx/xmlquery"
-	"github.com/bbredesen/vk-gen/def"
+	"github.com/gataengine/vk-gen/def"
 )
 
 type Feature struct {

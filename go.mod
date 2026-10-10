@@ -1,4 +1,4 @@
-module github.com/bbredesen/vk-gen
+module github.com/gataengine/vk-gen
 
 go 1.24.0
 

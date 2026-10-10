@@ -4,7 +4,7 @@ import (
 	"strconv"
 
 	"github.com/antchfx/xmlquery"
-	"github.com/bbredesen/vk-gen/def"
+	"github.com/gataengine/vk-gen/def"
 )
 
 type Extension struct {

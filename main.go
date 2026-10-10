@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/antchfx/xmlquery"
-	"github.com/bbredesen/vk-gen/def"
-	"github.com/bbredesen/vk-gen/feat"
+	"github.com/gataengine/vk-gen/def"
+	"github.com/gataengine/vk-gen/feat"
 	"github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
 )
