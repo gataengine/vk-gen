@@ -92,7 +92,7 @@ createInfo := vk.InstanceCreateInfo{
 ```
 
 ## Code Generation
-This codebase is (almost) entirely generated from a `vk.xml` file by the [vk-gen](https://github.com/bbredesen/vk-gen)
+This codebase is (almost) entirely generated from a `vk.xml` file by the [vk-gen](https://github.com/gataengine/vk-gen)
 tool. Updating go-vk for a new Vulkan version should be as easy as downloading the new vk.xml file from Khronos and
 executing vk-gen. **This repository does not get direct modifications!** Any bug fixes or new features need to be made in
 `vk-gen`, which will then be used re-generate this code base.
@@ -103,7 +103,7 @@ Ensure that your GPU supports Vulkan and that a Vulkan library is installed in y
 (e.g., C:\windows\system32\vulkan-1.dll on Windows). This package uses Cgo to call Vulkan, so it needs to be enabled in 
 your Go settings.
 
-`$ go get github.com/bbredesen/go-vk@latest`
+`$ go get github.com/gataengine/go-vk@latest`
 
 Builds for Vulkan API versions 1.1, 1.2, 1.3 (and future releases) will be tagged as releases of go-vk with matching
 version numbers, if you want to use a specific version of the API. go-vk does not itself require the Vulkan SDK be installed,
@@ -114,7 +114,7 @@ validation layers, shader compilers, etc. during development.
 package main
 
 import (
-    "github.com/bbredesen/go-vk"
+    "github.com/gataengine/go-vk"
 )
 // Notice that you don't need to alias the import, it is already bound to the "vk" namespace
 

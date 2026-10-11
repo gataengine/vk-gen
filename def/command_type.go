@@ -242,7 +242,8 @@ func (t *commandType) PrintPublicDeclaration(w io.Writer) {
 							fmt.Fprintf(preamble, "// Identical internal and external")
 							// fmt.Fprintf(preamble, "  var %s %s\n", p.publicName, p.resolvedType.PublicName())
 							fmt.Fprintf(epilogue, "  %s = make([]%s, %s)\n", p.publicName, p.resolvedType.PublicName(), p.lenMemberParam.publicName)
-							fmt.Fprintf(epilogue, "  %s := &%s[0]\n", p.internalName, p.publicName)
+							// SliceData, not &x[0]: the count is 0 when nothing is available
+							fmt.Fprintf(epilogue, "  %s := unsafe.SliceData(%s)\n", p.internalName, p.publicName)
 							fmt.Fprintln(epilogue)
 
 						} else {
@@ -250,7 +251,7 @@ func (t *commandType) PrintPublicDeclaration(w io.Writer) {
 							fmt.Fprintf(preamble, "  var %s %s\n", p.internalName, p.resolvedType.InternalName())
 							fmt.Fprintf(epilogue, "  sl_%s := make([]%s, %s)\n", p.internalName, p.resolvedType.(*pointerType).resolvedPointsAtType.InternalName(), p.lenMemberParam.publicName)
 							fmt.Fprintf(epilogue, "  %s = make(%s, %s)\n", p.publicName, p.resolvedType.PublicName(), p.lenMemberParam.publicName)
-							fmt.Fprintf(epilogue, "  %s = &sl_%s[0]\n", p.internalName, p.internalName)
+							fmt.Fprintf(epilogue, "  %s = unsafe.SliceData(sl_%s)\n", p.internalName, p.internalName)
 							fmt.Fprintln(epilogue)
 
 							fmt.Fprintf(outputTranslation,
@@ -496,45 +497,44 @@ func trampStringFromParams(sl []*commandParam) string {
 	return sb.String()
 }
 
-// isFloatParam reports whether p is a float passed by value. C passes those in FP
-// registers, so they go through execTrampolineFloat instead of being widened to uintptr.
-func isFloatParam(p *commandParam) bool {
-	return p.resolvedType.Category() != CatPointer && p.resolvedType.PublicName() == "float32"
-}
-
-// floatTrampolineArgs splits params into the ", []uintptr{...}, []float32{...}" arguments
-// of execTrampolineFloat. ok is false when there are no floats; it panics when floats are
-// not all trailing, which TrampolineFloat does not support.
-func floatTrampolineArgs(params []*commandParam) (args string, ok bool) {
-	firstFloat := -1
-	for i, p := range params {
-		if isFloatParam(p) {
-			if firstFloat < 0 {
-				firstFloat = i
-			}
-		} else if firstFloat >= 0 {
-			panic("float parameters must be trailing: " + p.publicName)
+// floatTrampolineSplit reports whether params are one or two integers/handles followed only
+// by one to three float32 scalars (vkCmdSetDepthBias, vkSetDeviceMemoryPriorityEXT, ...),
+// returning the number of leading integer params. The C ABI passes floats in
+// floating-point registers, so these commands must go through execTrampolineFloat;
+// converting them to uintptr would make the callee read stale register contents.
+func floatTrampolineSplit(params []*commandParam) (int, bool) {
+	isFloat := func(p *commandParam) bool {
+		// blendConstants is a float[4] array that resolves to a plain float.
+		return p.resolvedType.Category() != CatPointer && p.resolvedType.PublicName() == "float32" && p.registryName != "blendConstants"
+	}
+	nInts := 0
+	for nInts < len(params) && !isFloat(params[nInts]) {
+		nInts++
+	}
+	nFloats := len(params) - nInts
+	if nInts < 1 || nInts > 2 || nFloats < 1 || nFloats > 3 {
+		return 0, false
+	}
+	for _, p := range params[nInts:] {
+		if !isFloat(p) {
+			return 0, false
 		}
 	}
-	if firstFloat < 0 {
-		return "", false
-	}
-	floats := &strings.Builder{}
-	for _, p := range params[firstFloat:] {
-		fmt.Fprintf(floats, ", %s", p.internalName)
-	}
-	ints := strings.TrimPrefix(trampStringFromParams(params[:firstFloat]), ", ")
-	return fmt.Sprintf(", []uintptr{%s}, []float32{%s}", ints, strings.TrimPrefix(floats.String(), ", ")), true
+	return nInts, true
 }
 
 func (t *commandType) printTrampolineCall(w io.Writer, trampParams []*commandParam, returnParam *commandParam) {
 	trampParamsString := trampStringFromParams(trampParams)
 
-	if floatArgs, ok := floatTrampolineArgs(trampParams); ok {
-		if returnParam != nil {
-			panic("float trampoline commands must return void: " + t.RegistryName())
+	if nInts, ok := floatTrampolineSplit(trampParams); ok && returnParam == nil {
+		var ints, floats []string
+		for _, param := range trampParams[:nInts] {
+			ints = append(ints, fmt.Sprintf("uintptr(%s)", param.internalName))
 		}
-		fmt.Fprintf(w, "  execTrampolineFloat(%s%s)\n", t.RegistryName(), floatArgs)
+		for _, param := range trampParams[nInts:] {
+			floats = append(floats, param.internalName)
+		}
+		fmt.Fprintf(w, "  execTrampolineFloat(%s, []uintptr{%s}, %s)\n", t.RegistryName(), strings.Join(ints, ", "), strings.Join(floats, ", "))
 	} else if returnParam != nil {
 		if returnParam.resolvedType.IsIdenticalPublicAndInternal() {
 			fmt.Fprintf(w, "  %s = %s(execTrampoline(%s%s))\n", returnParam.publicName, returnParam.resolvedType.PublicName(), t.RegistryName(), trampParamsString)

@@ -2,7 +2,7 @@
 
 vk-gen is a tool used to create Go bindings for the Vulkan graphics API. It uses the Vulkan XML specification to
 generate all type definitions and native function calls for the API. It generates the code for
-[go-vk](https://github.com/bbredesen/go-vk), but it can just as well be used to create a modified binding set in your
+[go-vk](https://github.com/gataengine/go-vk), but it can just as well be used to create a modified binding set in your
 own projects (for example, excluding certain vendor extensions, including beta extensions, or to generate code from a
 specific version of the Vulkan headers). 
 
@@ -11,7 +11,7 @@ specific version of the Vulkan headers).
 **You do not need to install this tool to use go-vk in a project.** Install if you need to generate for a specific
 version of the API or want to produce a binding using only a subset of Vulkan.
 
-Install: `go install github.com/bbredesen/vk-gen@latest`
+Install: `go install github.com/gataengine/vk-gen@latest`
 
 Download the latest registry file: `curl https://raw.githubusercontent.com/KhronosGroup/Vulkan-Headers/main/registry/vk.xml > vk.xml`
 

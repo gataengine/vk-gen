@@ -19,6 +19,10 @@ import (
 // #cgo nocallback Trampoline6
 // #cgo nocallback Trampoline9
 // #cgo nocallback Trampoline12
+// #cgo nocallback TrampolineFloat1P1F
+// #cgo nocallback TrampolineFloat1P2F
+// #cgo nocallback TrampolineFloat1P3F
+// #cgo nocallback TrampolineFloat2P1F
 import "C"
 
 // Vulkanizer allows conversion from go-vk style structs to Vulkan-native structs. This
@@ -112,74 +116,20 @@ func resolveCommandHandle(cmd *vkCommand, args []uintptr) unsafe.Pointer {
 	return C.GetProcFunc(dispatchable, unsafe.Pointer(sys_stringToBytePointer(cmd.protoName)))
 }
 
-// ensureCommandHandle opens the default Vulkan library if needed and resolves cmd's
-// function pointer. args are the trampoline arguments (args[0] is the resolve hint).
-func ensureCommandHandle(cmd *vkCommand, args []uintptr) {
-	if dlHandle == nil && !procAddressEnabled && !disableDefaultVulkanLibraryFallback {
-		var libName string
-		switch runtime.GOOS {
-		case "windows":
-			libName = "vulkan-1.dll"
-		case "darwin":
-			// TODO: Running on Mac/Darwin is tested only to the point of creating and
-			// destroying a Vulkan instance.
-			libName = "libMoltenVK.dylib"
-		case "linux":
-			// TODO: Running on Linux is tested only to the point of creating and
-			// destroying a Vulkan instance.
-			libName = "libvulkan.so"
-		default:
-			panic("Unsupported GOOS at OpenLibrary: " + runtime.GOOS)
-		}
-
-		if overrideLibName != "" {
-			libName = overrideLibName
-		}
-
-		cstr := C.CString(libName)
-		dlHandle = C.OpenLibrary(cstr)
-		C.free(unsafe.Pointer(cstr))
-		if dlHandle == nil {
-			// Fail here: a nil handle otherwise surfaces as a misleading
-			// "Unable to resolve command" for the first command called.
-			panic("Unable to load Vulkan library " + libName)
-		}
-	}
-
-	if cmd.fnHandle == nil {
-		cmd.fnHandle = resolveCommandHandle(cmd, args)
-		if cmd.fnHandle == nil {
-			panic("Unable to resolve command " + cmd.protoName)
-		}
-	}
-}
-
-// execTrampolineFloat calls a void command whose integer/handle parameters (ints) are
-// followed by float parameters (floats). C passes float arguments in FP registers, so
-// they cannot be widened to uintptr like the other parameters (see TrampolineFloat).
-func execTrampolineFloat(cmd *vkCommand, ints []uintptr, floats []float32) {
-	if len(ints)+len(floats) != cmd.argCount || len(ints) < 1 || len(ints) > 2 || len(floats) < 1 || len(floats) > 3 {
-		panic("Unsupported float parameter layout for cmd " + cmd.protoName)
-	}
-	ensureCommandHandle(cmd, ints)
-
-	var i [2]C.uintptr_t
-	var f [3]C.float
-	for n, v := range ints {
-		i[n] = C.uintptr_t(v)
-	}
-	for n, v := range floats {
-		f[n] = C.float(v)
-	}
-	C.TrampolineFloat(cmd.fnHandle, C.int(len(ints)), i[0], i[1], C.int(len(floats)), f[0], f[1], f[2])
-}
-
+// execTrampoline is marked //go:uintptrescapes because bindings pass Go pointers
+// (notably output parameters such as &instance) as uintptr(unsafe.Pointer(p)). A plain
+// uintptr is invisible to the runtime: if the goroutine stack grows and is copied before
+// the cgo call (resolveCommandHandle, the prologue here, ...), the pointer is not
+// adjusted and Vulkan writes the result into the stale stack, leaving the caller with a
+// zero handle. The directive makes every such conversion at a call site heap-allocate
+// the pointee and keep it alive for the duration of the call, as syscall.SyscallN does.
+//
+//go:uintptrescapes
 func execTrampoline(cmd *vkCommand, args ...uintptr) uintptr {
 	if len(args) != cmd.argCount {
 		panic("Wrong number of arguments passed for cmd " + cmd.protoName)
 	}
-
-	ensureCommandHandle(cmd, args)
+	prepareCommand(cmd, args)
 
 	var result C.uintptr_t
 
@@ -211,6 +161,75 @@ func execTrampoline(cmd *vkCommand, args ...uintptr) uintptr {
 		panic("Unhandled number of arguments passed for cmd " + cmd.protoName)
 	}
 
+	return uintptr(result)
+}
+
+// prepareCommand loads the Vulkan library on first use and resolves cmd's entry point.
+func prepareCommand(cmd *vkCommand, args []uintptr) {
+	if dlHandle == nil && !procAddressEnabled && !disableDefaultVulkanLibraryFallback {
+		var libName string
+		switch runtime.GOOS {
+		case "windows":
+			libName = "vulkan-1.dll"
+		case "darwin":
+			// TODO: Running on Mac/Darwin is tested only to the point of creating and
+			// destroying a Vulkan instance.
+			libName = "libMoltenVK.dylib"
+		case "linux":
+			// The runtime soname; plain libvulkan.so exists only with dev packages.
+			libName = "libvulkan.so.1"
+		default:
+			panic("Unsupported GOOS at OpenLibrary: " + runtime.GOOS)
+		}
+
+		if overrideLibName != "" {
+			libName = overrideLibName
+		}
+
+		cstr := C.CString(libName)
+		dlHandle = C.OpenLibrary(cstr)
+		C.free(unsafe.Pointer(cstr))
+		if dlHandle == nil {
+			// Fail here: a nil handle otherwise surfaces as a misleading
+			// "Unable to resolve command" for the first command called.
+			panic("Unable to load Vulkan library " + libName)
+		}
+	}
+
+	if cmd.fnHandle == nil {
+		cmd.fnHandle = resolveCommandHandle(cmd, args)
+		if cmd.fnHandle == nil {
+			panic("Unable to resolve command " + cmd.protoName)
+		}
+	}
+}
+
+// execTrampolineFloat calls a command whose parameters are up to two integers or handles
+// followed only by up to three floats (vkCmdSetDepthBias, vkSetDeviceMemoryPriorityEXT,
+// ...). The C ABI passes floats in floating-point registers, so routing them through
+// execTrampoline as uintptr would make the callee read stale register contents instead
+// of the caller's values.
+func execTrampolineFloat(cmd *vkCommand, ints []uintptr, floats ...float32) uintptr {
+	if len(ints)+len(floats) != cmd.argCount || len(ints) > 2 || len(floats) > 3 {
+		panic("Wrong number of arguments passed for cmd " + cmd.protoName)
+	}
+	prepareCommand(cmd, ints)
+
+	// Exact prototypes per signature: Windows x64 assigns registers by argument position,
+	// so a generic (int, int, float, float, float) shim would misplace the floats there.
+	var result C.size_t
+	switch {
+	case len(ints) == 1 && len(floats) == 1:
+		result = C.TrampolineFloat1P1F(cmd.fnHandle, C.uintptr_t(ints[0]), C.float(floats[0]))
+	case len(ints) == 1 && len(floats) == 2:
+		result = C.TrampolineFloat1P2F(cmd.fnHandle, C.uintptr_t(ints[0]), C.float(floats[0]), C.float(floats[1]))
+	case len(ints) == 1 && len(floats) == 3:
+		result = C.TrampolineFloat1P3F(cmd.fnHandle, C.uintptr_t(ints[0]), C.float(floats[0]), C.float(floats[1]), C.float(floats[2]))
+	case len(ints) == 2 && len(floats) == 1:
+		result = C.TrampolineFloat2P1F(cmd.fnHandle, C.uintptr_t(ints[0]), C.uintptr_t(ints[1]), C.float(floats[0]))
+	default:
+		panic("Unhandled float signature for cmd " + cmd.protoName)
+	}
 	return uintptr(result)
 }
 
