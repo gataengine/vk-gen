@@ -496,10 +496,46 @@ func trampStringFromParams(sl []*commandParam) string {
 	return sb.String()
 }
 
+// isFloatParam reports whether p is a float passed by value. C passes those in FP
+// registers, so they go through execTrampolineFloat instead of being widened to uintptr.
+func isFloatParam(p *commandParam) bool {
+	return p.resolvedType.Category() != CatPointer && p.resolvedType.PublicName() == "float32"
+}
+
+// floatTrampolineArgs splits params into the ", []uintptr{...}, []float32{...}" arguments
+// of execTrampolineFloat. ok is false when there are no floats; it panics when floats are
+// not all trailing, which TrampolineFloat does not support.
+func floatTrampolineArgs(params []*commandParam) (args string, ok bool) {
+	firstFloat := -1
+	for i, p := range params {
+		if isFloatParam(p) {
+			if firstFloat < 0 {
+				firstFloat = i
+			}
+		} else if firstFloat >= 0 {
+			panic("float parameters must be trailing: " + p.publicName)
+		}
+	}
+	if firstFloat < 0 {
+		return "", false
+	}
+	floats := &strings.Builder{}
+	for _, p := range params[firstFloat:] {
+		fmt.Fprintf(floats, ", %s", p.internalName)
+	}
+	ints := strings.TrimPrefix(trampStringFromParams(params[:firstFloat]), ", ")
+	return fmt.Sprintf(", []uintptr{%s}, []float32{%s}", ints, strings.TrimPrefix(floats.String(), ", ")), true
+}
+
 func (t *commandType) printTrampolineCall(w io.Writer, trampParams []*commandParam, returnParam *commandParam) {
 	trampParamsString := trampStringFromParams(trampParams)
 
-	if returnParam != nil {
+	if floatArgs, ok := floatTrampolineArgs(trampParams); ok {
+		if returnParam != nil {
+			panic("float trampoline commands must return void: " + t.RegistryName())
+		}
+		fmt.Fprintf(w, "  execTrampolineFloat(%s%s)\n", t.RegistryName(), floatArgs)
+	} else if returnParam != nil {
 		if returnParam.resolvedType.IsIdenticalPublicAndInternal() {
 			fmt.Fprintf(w, "  %s = %s(execTrampoline(%s%s))\n", returnParam.publicName, returnParam.resolvedType.PublicName(), t.RegistryName(), trampParamsString)
 		} else {

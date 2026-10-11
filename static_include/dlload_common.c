@@ -21,3 +21,14 @@ size_t Trampoline9(void *symbol, size_t p0, size_t p1, size_t p2, size_t p3, siz
 size_t Trampoline12(void *symbol, uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4, uintptr_t p5, uintptr_t p6, uintptr_t p7, uintptr_t p8, uintptr_t p9, uintptr_t p10, uintptr_t p11) {
 	return ((vkGeneric_func12) symbol)(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11);
 }
+
+void TrampolineFloat(void *symbol, int nInts, uintptr_t i0, uintptr_t i1, int nFloats, float f0, float f1, float f2) {
+	switch (nInts * 4 + nFloats) {
+	case 1 * 4 + 1: ((void (*)(uintptr_t, float)) symbol)(i0, f0); break;
+	case 1 * 4 + 2: ((void (*)(uintptr_t, float, float)) symbol)(i0, f0, f1); break;
+	case 1 * 4 + 3: ((void (*)(uintptr_t, float, float, float)) symbol)(i0, f0, f1, f2); break;
+	case 2 * 4 + 1: ((void (*)(uintptr_t, uintptr_t, float)) symbol)(i0, i1, f0); break;
+	case 2 * 4 + 2: ((void (*)(uintptr_t, uintptr_t, float, float)) symbol)(i0, i1, f0, f1); break;
+	case 2 * 4 + 3: ((void (*)(uintptr_t, uintptr_t, float, float, float)) symbol)(i0, i1, f0, f1, f2); break;
+	}
+}

@@ -112,11 +112,9 @@ func resolveCommandHandle(cmd *vkCommand, args []uintptr) unsafe.Pointer {
 	return C.GetProcFunc(dispatchable, unsafe.Pointer(sys_stringToBytePointer(cmd.protoName)))
 }
 
-func execTrampoline(cmd *vkCommand, args ...uintptr) uintptr {
-	if len(args) != cmd.argCount {
-		panic("Wrong number of arguments passed for cmd " + cmd.protoName)
-	}
-
+// ensureCommandHandle opens the default Vulkan library if needed and resolves cmd's
+// function pointer. args are the trampoline arguments (args[0] is the resolve hint).
+func ensureCommandHandle(cmd *vkCommand, args []uintptr) {
 	if dlHandle == nil && !procAddressEnabled && !disableDefaultVulkanLibraryFallback {
 		var libName string
 		switch runtime.GOOS {
@@ -141,6 +139,11 @@ func execTrampoline(cmd *vkCommand, args ...uintptr) uintptr {
 		cstr := C.CString(libName)
 		dlHandle = C.OpenLibrary(cstr)
 		C.free(unsafe.Pointer(cstr))
+		if dlHandle == nil {
+			// Fail here: a nil handle otherwise surfaces as a misleading
+			// "Unable to resolve command" for the first command called.
+			panic("Unable to load Vulkan library " + libName)
+		}
 	}
 
 	if cmd.fnHandle == nil {
@@ -149,6 +152,34 @@ func execTrampoline(cmd *vkCommand, args ...uintptr) uintptr {
 			panic("Unable to resolve command " + cmd.protoName)
 		}
 	}
+}
+
+// execTrampolineFloat calls a void command whose integer/handle parameters (ints) are
+// followed by float parameters (floats). C passes float arguments in FP registers, so
+// they cannot be widened to uintptr like the other parameters (see TrampolineFloat).
+func execTrampolineFloat(cmd *vkCommand, ints []uintptr, floats []float32) {
+	if len(ints)+len(floats) != cmd.argCount || len(ints) < 1 || len(ints) > 2 || len(floats) < 1 || len(floats) > 3 {
+		panic("Unsupported float parameter layout for cmd " + cmd.protoName)
+	}
+	ensureCommandHandle(cmd, ints)
+
+	var i [2]C.uintptr_t
+	var f [3]C.float
+	for n, v := range ints {
+		i[n] = C.uintptr_t(v)
+	}
+	for n, v := range floats {
+		f[n] = C.float(v)
+	}
+	C.TrampolineFloat(cmd.fnHandle, C.int(len(ints)), i[0], i[1], C.int(len(floats)), f[0], f[1], f[2])
+}
+
+func execTrampoline(cmd *vkCommand, args ...uintptr) uintptr {
+	if len(args) != cmd.argCount {
+		panic("Wrong number of arguments passed for cmd " + cmd.protoName)
+	}
+
+	ensureCommandHandle(cmd, args)
 
 	var result C.uintptr_t
 
