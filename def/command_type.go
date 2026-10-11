@@ -3,6 +3,7 @@ package def
 import (
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -489,6 +490,9 @@ func trampStringFromParams(sl []*commandParam) string {
 	for _, param := range sl {
 		if param.resolvedType.Category() == CatPointer {
 			fmt.Fprintf(sb, ", uintptr(unsafe.Pointer(%s))", param.internalName)
+		} else if param.resolvedType.Category() == CatArray {
+			// Fixed-size array params decay to a pointer in C
+			fmt.Fprintf(sb, ", uintptr(unsafe.Pointer(&%s))", param.internalName)
 		} else {
 			fmt.Fprintf(sb, ", uintptr(%s)", param.internalName)
 		}
@@ -504,8 +508,7 @@ func trampStringFromParams(sl []*commandParam) string {
 // converting them to uintptr would make the callee read stale register contents.
 func floatTrampolineSplit(params []*commandParam) (int, bool) {
 	isFloat := func(p *commandParam) bool {
-		// blendConstants is a float[4] array that resolves to a plain float.
-		return p.resolvedType.Category() != CatPointer && p.resolvedType.PublicName() == "float32" && p.registryName != "blendConstants"
+		return p.resolvedType.Category() != CatPointer && p.resolvedType.PublicName() == "float32"
 	}
 	nInts := 0
 	for nInts < len(params) && !isFloat(params[nInts]) {
@@ -569,6 +572,7 @@ type commandParam struct {
 	isAlwaysOptional    bool
 
 	pointerLevel        int
+	arrayLen            string // fixed-size array param, e.g. "4" for float blendConstants[4]
 	lenSpec, altLenSpec string
 
 	parentCommand  *commandType
@@ -604,6 +608,10 @@ func (p *commandParam) Resolve(tr TypeRegistry, vr ValueRegistry) *IncludeSet {
 		ptr := pointerType{}
 		ptr.resolvedPointsAtType = p.resolvedType
 		p.resolvedType = &ptr
+	}
+
+	if p.arrayLen != "" {
+		p.resolvedType = &arrayType{resolvedPointsAtType: p.resolvedType, lenSpec: p.arrayLen}
 	}
 
 	// check for length specification
@@ -735,6 +743,9 @@ func NewCommandFromXML(elt *xmlquery.Node, api string) *commandType {
 	return &rval
 }
 
+// paramArrayRx matches a fixed-size array declarator after the param name, e.g. "blendConstants[4]"
+var paramArrayRx = regexp.MustCompile(`\[\s*(\w+)\s*\]`)
+
 func NewCommandParamFromXML(elt *xmlquery.Node, forCommand *commandType) *commandParam {
 	rval := commandParam{}
 	rval.registryName = xmlquery.FindOne(elt, "name").InnerText()
@@ -744,6 +755,9 @@ func NewCommandParamFromXML(elt *xmlquery.Node, forCommand *commandType) *comman
 	rval.isConstParam = strings.HasPrefix(elt.InnerText(), "const")
 	rval.pointerLevel = strings.Count(elt.InnerText(), "*")
 	rval.lenSpec = elt.SelectAttr("len")
+	if m := paramArrayRx.FindStringSubmatch(elt.InnerText()); m != nil {
+		rval.arrayLen = m[1]
+	}
 	rval.altLenSpec = elt.SelectAttr("altlen")
 
 	rval.parentCommand = forCommand

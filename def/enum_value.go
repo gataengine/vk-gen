@@ -14,6 +14,9 @@ type enumValue struct {
 
 	bitposString string
 
+	// hasOffset is set when the value is given as an extension offset rather than a literal value
+	hasOffset bool
+
 	comment string
 
 	sourceOrder int
@@ -23,11 +26,19 @@ func (v *enumValue) ValueString() string {
 	if v.IsAlias() {
 		return v.resolvedAliasValue.PublicName()
 	} else {
-		if v.extNumber != 0 {
+		if v.hasOffset && v.extNumber != 0 {
 			tmp := (1000000000 + (v.extNumber-1)*1000 + v.offset) * v.direction
 			return strconv.Itoa(tmp)
 		}
 		return v.valueString
+	}
+}
+
+// SetExtensionNumber records the number of the extension that defines this value. An explicit
+// extnumber attribute (a value defined on behalf of another extension) takes precedence.
+func (v *enumValue) SetExtensionNumber(extNum int) {
+	if v.extNumber == 0 {
+		v.extNumber = extNum
 	}
 }
 
@@ -128,7 +139,8 @@ func ReadEnumValuesFromXML(doc *xmlquery.Node, td TypeDefiner, tr TypeRegistry, 
 					if valDef.extNumber == 0 {
 						valDef.extNumber = existingAsEnum.extNumber
 					}
-					if valDef.offset == 0 {
+					if !valDef.hasOffset {
+						valDef.hasOffset = existingAsEnum.hasOffset
 						valDef.offset = existingAsEnum.offset
 					}
 					if valDef.direction == 0 {
@@ -158,6 +170,7 @@ func NewEnumValueFromXML(td TypeDefiner, elt *xmlquery.Node) *enumValue {
 		var err error
 
 		if offsetStr := elt.SelectAttr("offset"); offsetStr != "" {
+			rval.hasOffset = true
 			if rval.offset, err = strconv.Atoi(offsetStr); err != nil {
 				logrus.WithField("registry name", rval.registryName).
 					WithField("offset", offsetStr).

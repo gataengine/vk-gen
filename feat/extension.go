@@ -54,11 +54,17 @@ func ReadExtensionFromXML(extNode *xmlquery.Node, tr def.TypeRegistry, vr def.Va
 			var vd def.ValueDefiner
 
 			if td, found := tr[extendsTypeName]; found {
-				vd = def.NewEnumValueFromXML(td, enumNode)
+				if enumNode.SelectAttr("bitpos") != "" {
+					// Bit flags are absolute; the extension number only applies to offset values
+					vd = def.NewBitmaskValueFromXML(td, enumNode)
+				} else {
+					vd = def.NewEnumValueFromXML(td, enumNode)
+					vd.SetExtensionNumber(extNum)
+				}
 			} else {
 				vd = def.NewUntypedEnumValueFromXML(enumNode)
+				vd.SetExtensionNumber(extNum)
 			}
-			vd.SetExtensionNumber(extNum)
 			vr[vd.RegistryName()] = vd
 
 			rval.requireValueNames[enumNode.SelectAttr("name")] = true
