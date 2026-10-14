@@ -2,6 +2,9 @@ package vk
 
 import (
 	"bytes"
+	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"unsafe"
 )
@@ -66,6 +69,13 @@ var procAddressEnabled bool
 var allCommands []*vkCommand
 
 var overrideLibName string
+var loadedLibName string
+
+// LoadedVulkanLibrary returns the name or path go-vk opened, or "" before the first
+// Vulkan call (or when SetProcAddress supplies the entry points).
+func LoadedVulkanLibrary() string {
+	return loadedLibName
+}
 
 // OverrideDefaultVulkanLibrary allows you to set a specific Vulkan library name to be used in your program. For
 // example, if you want to enable the validation layers, those layers are only available in the Vulkan SDK libary. go-vk
@@ -164,35 +174,56 @@ func execTrampoline(cmd *vkCommand, args ...uintptr) uintptr {
 	return uintptr(result)
 }
 
+// defaultVulkanLibraries lists the libraries tried, in order, when no override is set.
+// On macOS the Vulkan loader comes first (it provides the validation layers), then
+// MoltenVK alone; each is looked up in $VULKAN_SDK/lib, /usr/local/lib (the SDK's system
+// install), /opt/homebrew/lib and finally by bare name. The explicit directories are
+// needed because dyld's default fallback path for Go binaries is only /usr/lib.
+func defaultVulkanLibraries() []string {
+	switch runtime.GOOS {
+	case "windows":
+		return []string{"vulkan-1.dll"}
+	case "darwin":
+		dirs := []string{"/usr/local/lib", "/opt/homebrew/lib", ""}
+		if sdk := os.Getenv("VULKAN_SDK"); sdk != "" {
+			dirs = append([]string{filepath.Join(sdk, "lib")}, dirs...)
+		}
+		var names []string
+		for _, lib := range []string{"libvulkan.1.dylib", "libMoltenVK.dylib"} {
+			for _, dir := range dirs {
+				names = append(names, filepath.Join(dir, lib))
+			}
+		}
+		return names
+	case "linux":
+		// The runtime soname; plain libvulkan.so exists only with dev packages.
+		return []string{"libvulkan.so.1"}
+	default:
+		panic("Unsupported GOOS at OpenLibrary: " + runtime.GOOS)
+	}
+}
+
 // prepareCommand loads the Vulkan library on first use and resolves cmd's entry point.
 func prepareCommand(cmd *vkCommand, args []uintptr) {
 	if dlHandle == nil && !procAddressEnabled && !disableDefaultVulkanLibraryFallback {
-		var libName string
-		switch runtime.GOOS {
-		case "windows":
-			libName = "vulkan-1.dll"
-		case "darwin":
-			// TODO: Running on Mac/Darwin is tested only to the point of creating and
-			// destroying a Vulkan instance.
-			libName = "libMoltenVK.dylib"
-		case "linux":
-			// The runtime soname; plain libvulkan.so exists only with dev packages.
-			libName = "libvulkan.so.1"
-		default:
-			panic("Unsupported GOOS at OpenLibrary: " + runtime.GOOS)
-		}
-
+		libNames := defaultVulkanLibraries()
 		if overrideLibName != "" {
-			libName = overrideLibName
+			libNames = []string{overrideLibName}
 		}
 
-		cstr := C.CString(libName)
-		dlHandle = C.OpenLibrary(cstr)
-		C.free(unsafe.Pointer(cstr))
+		for _, libName := range libNames {
+			cstr := C.CString(libName)
+			dlHandle = C.OpenLibrary(cstr)
+			C.free(unsafe.Pointer(cstr))
+			if dlHandle != nil {
+				loadedLibName = libName
+				break
+			}
+		}
 		if dlHandle == nil {
 			// Fail here: a nil handle otherwise surfaces as a misleading
 			// "Unable to resolve command" for the first command called.
-			panic("Unable to load Vulkan library " + libName)
+			panic("Unable to load Vulkan library, tried " + fmt.Sprint(libNames))
 		}
 	}
 
