@@ -603,6 +603,10 @@ func (p *commandParam) Resolve(tr TypeRegistry, vr ValueRegistry) *IncludeSet {
 	p.resolvedType = tr[p.typeName]
 	iset.MergeWith(p.resolvedType.Resolve(tr, vr))
 
+	if p.pointerLevel > 0 && absorbsPointer(p.resolvedType) {
+		p.pointerLevel--
+	}
+
 	// Build the pointer chain if applicable
 	for i := 0; i < p.pointerLevel; i++ {
 		ptr := pointerType{}

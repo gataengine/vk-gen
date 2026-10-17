@@ -30,6 +30,9 @@ type structMember struct {
 	altLenSpec          string
 	isLenForOtherMember []*structMember
 
+	// opaquePointerAbsorbed: one pointer level was dropped for an opaque-pointer external type (see absorbsPointer)
+	opaquePointerAbsorbed bool
+
 	fixedLengthArray bool
 
 	typeRegistryName string
@@ -228,6 +231,11 @@ func (t *structType) PrintInternalDeclaration(w io.Writer) {
 func (m *structMember) Resolve(tr TypeRegistry, vr ValueRegistry) *IncludeSet {
 	m.publicName = strings.Title(RenameIdentifier(m.registryName))
 	m.internalName = RenameIdentifier(m.registryName)
+
+	if !m.opaquePointerAbsorbed && m.pointerDepth > 0 && absorbsPointer(tr[m.typeRegistryName]) {
+		m.pointerDepth--
+		m.opaquePointerAbsorbed = true
+	}
 
 	// This automatically handles non-pointer types, i.e. pointerDepth == 0
 	previousTarget := tr[m.typeRegistryName]

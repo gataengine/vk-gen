@@ -18,6 +18,16 @@ type externalType struct {
 	requiresType TypeDefiner
 
 	translateToPublicOverride, translateToInternalOverride string
+
+	// opaquePointer: a C pointer to this type (e.g. X11 Display*) is represented by mappedTypeName itself
+	// (e.g. uintptr), so one pointer level is absorbed wherever the type is used.
+	opaquePointer bool
+}
+
+// absorbsPointer reports whether a single C pointer to td is represented by td's Go type itself.
+func absorbsPointer(td TypeDefiner) bool {
+	et, ok := td.(*externalType)
+	return ok && et.opaquePointer
 }
 
 func (t *externalType) Category() TypeCategory { return CatExternal }
@@ -93,6 +103,7 @@ func NewOrUpdateExternalTypeFromJSON(key string, exception gjson.Result, tr Type
 
 	updatedEntry.translateToPublicOverride = exception.Get("go:translatePublic").String()
 	updatedEntry.translateToInternalOverride = exception.Get("go:translateInternal").String()
+	updatedEntry.opaquePointer = exception.Get("go:opaquePointer").Bool()
 
 	exception.Get("enums").ForEach(func(key, value gjson.Result) bool {
 		NewOrUpdateExternalValueFromJSON(key.String(), value.String(), updatedEntry, tr, vr)

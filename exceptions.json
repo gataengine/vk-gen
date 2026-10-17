@@ -211,9 +211,13 @@
 
     "!comment": "TODO : All of the platform types below need to be dealt with. uint32 is a placeholder only!",
 
-    "Display": { "go:type": "uint32" },
-    "VisualID": { "go:type": "uint32" },
-    "Window": { "go:type": "uint32" },
+    "Display": {
+      "!comment": "X11 Display is only used as Display*; go:opaquePointer maps the whole pointer to uintptr",
+      "go:type": "uintptr",
+      "go:opaquePointer": true
+    },
+    "VisualID": { "!comment": "X11 VisualID is unsigned long", "go:type": "uintptr" },
+    "Window": { "!comment": "X11 Window is an XID (unsigned long)", "go:type": "uintptr" },
     "RROutput": { "go:type": "uint32" },
     "wl_display": { "go:type": "uint32" },
     "wl_surface": { "go:type": "uint32" },
